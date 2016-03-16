@@ -418,7 +418,26 @@ namespace Auth0.LoginClient
             var startUri = new Uri(authorizeUri + "&state=" + state);
             var endUri = new Uri(redirectUri);
 
-            return await WebAuthenticationBroker.AuthenticateAsync(WebAuthenticationOptions.None, startUri, endUri);
+            // Perform authentication, in some cases the WebAuthenticationBroker will throw a "Value does not fall within the expected range" exception
+            // for this reason we retry 3 times (if this exception occurs) before failing by throwing an AuthenticationErrorException
+            const int exceptionMaxRetries = 3;
+            int exceptionRetryCount = 0;
+            do
+            {
+                try
+                {
+                    // Attempt to authenticate and return if no exception occurs
+                    return await WebAuthenticationBroker.AuthenticateAsync(WebAuthenticationOptions.None, startUri, endUri);
+                }
+                catch (ArgumentException e)
+                {
+                    exceptionRetryCount++;
+                }
+            }
+            while (exceptionRetryCount < exceptionMaxRetries);
+
+            // Unable to authenticate, fail gracefully
+            throw new AuthenticationErrorException("WebAuthenticationBroker failed to perform authentication");
         }
 
         private static bool RequireDevice(string scope)
